@@ -6,12 +6,11 @@ A lightweight desktop tool for quickly cropping regions from images. Built with 
 
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue) ![License](https://img.shields.io/badge/license-CC0-green) ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-![Image Cropper screenshot](image_cropper_screenshot.jpg)
 ---
 
 ## Screenshot
 
-![Image Cropper screenshot](screenshot.png)
+![Image Cropper screenshot](image_cropper_screenshot.jpg)
 
 ---
 
