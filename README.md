@@ -26,8 +26,6 @@ A lightweight desktop tool for quickly cropping regions from images. Built with 
 - **Remembers** the last opened file between sessions
 - **Customisable** output folder and filename pattern via the ⚙ Settings dialog
 - Rule-of-thirds grid overlay inside the selection
-- Fading save confirmation toast
-- Scrollable Help and Settings popups
 
 ---
 
