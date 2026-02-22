@@ -99,6 +99,35 @@ class ImageCropper:
     #  UI
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    #  Tooltip helper
+    # ------------------------------------------------------------------
+
+    def _make_tooltip(self, widget, text):
+        tip_win = None
+
+        def show(e):
+            nonlocal tip_win
+            if tip_win:
+                return
+            x = widget.winfo_rootx() + widget.winfo_width() // 2
+            y = widget.winfo_rooty() + widget.winfo_height() + 4
+            tip_win = tk.Toplevel(widget)
+            tip_win.wm_overrideredirect(True)
+            tip_win.wm_geometry(f"+{x}+{y}")
+            tk.Label(tip_win, text=text, bg='#2b2b2b', fg='#00d4ff',
+                     font=('Segoe UI', 8), relief='flat', bd=0,
+                     padx=6, pady=3).pack()
+
+        def hide(e):
+            nonlocal tip_win
+            if tip_win:
+                tip_win.destroy()
+                tip_win = None
+
+        widget.bind('<Enter>', show)
+        widget.bind('<Leave>', hide)
+
     def _build_ui(self):
         menubar = tk.Menu(self.root)
         file_menu = tk.Menu(menubar, tearoff=0)
@@ -119,10 +148,44 @@ class ImageCropper:
 
         btn_style = dict(bg='#3a3a3a', fg='#cccccc', activebackground='#00d4ff',
                          activeforeground='#000000', relief='flat', bd=0,
-                         font=('Segoe UI', 9, 'bold'), cursor='hand2', padx=6, pady=2)
+                         font=('Segoe UI', 9, 'bold'), cursor='hand2', padx=8, pady=2)
 
-        tk.Button(top_bar, text=' ? ', command=self._show_help, **btn_style).pack(side=tk.RIGHT, padx=(0, 6), pady=3)
-        tk.Button(top_bar, text=' ⚙ ', command=self._show_settings, **btn_style).pack(side=tk.RIGHT, padx=(0, 2), pady=3)
+        # Right-side utility buttons
+        help_btn = tk.Button(top_bar, text=' ? ', command=self._show_help, **btn_style)
+        help_btn.pack(side=tk.RIGHT, padx=(0, 6), pady=3)
+        self._make_tooltip(help_btn, 'Help')
+
+        settings_btn = tk.Button(top_bar, text=' ⚙ ', command=self._show_settings, **btn_style)
+        settings_btn.pack(side=tk.RIGHT, padx=(0, 2), pady=3)
+        self._make_tooltip(settings_btn, 'Settings')
+
+        # Divider
+        tk.Frame(top_bar, bg='#333333', width=1).pack(side=tk.RIGHT, fill=tk.Y, pady=4, padx=4)
+
+        # Navigation & action buttons
+        nav_style = dict(bg='#2a2a2a', fg='#cccccc', activebackground='#00d4ff',
+                         activeforeground='#000000', relief='flat', bd=0,
+                         font=('Segoe UI', 11), cursor='hand2', padx=10, pady=2)
+
+        next_btn = tk.Button(top_bar, text='▶', command=self._next_image, **nav_style)
+        next_btn.pack(side=tk.RIGHT, padx=(0, 1), pady=3)
+        self._make_tooltip(next_btn, 'Next image  [Right arrow]')
+
+        prev_btn = tk.Button(top_bar, text='◀', command=self._prev_image, **nav_style)
+        prev_btn.pack(side=tk.RIGHT, padx=(0, 1), pady=3)
+        self._make_tooltip(prev_btn, 'Previous image  [Left arrow]')
+
+        # Divider
+        tk.Frame(top_bar, bg='#333333', width=1).pack(side=tk.RIGHT, fill=tk.Y, pady=4, padx=4)
+
+        save_btn = tk.Button(top_bar, text='💾  Save crop',
+                             command=self._save_crop,
+                             bg='#00d4ff', fg='#000000',
+                             activebackground='#00b8de', activeforeground='#000000',
+                             relief='flat', bd=0, font=('Segoe UI', 9, 'bold'),
+                             cursor='hand2', padx=10, pady=2)
+        save_btn.pack(side=tk.RIGHT, padx=(0, 2), pady=3)
+        self._make_tooltip(save_btn, 'Save crop  [Enter] or [Space]')
 
         self.canvas = tk.Canvas(self.root, bg='#3c3c3c', cursor='crosshair', highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
