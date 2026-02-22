@@ -64,7 +64,7 @@ def save_config(data):
 class ImageCropper:
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Cropper")
+        self.root.title("Image Cropper — by Los Amos del Calabozo")
         self.root.configure(bg='#2b2b2b')
 
         self.image_path = None
@@ -338,6 +338,8 @@ class ImageCropper:
 
         tk.Label(win, text="Image Cropper — Help", bg='#1e1e1e', fg='#00d4ff',
                  font=('Segoe UI', 13, 'bold'), pady=14).pack()
+        tk.Label(win, text="by Los Amos del Calabozo", bg='#1e1e1e', fg='#555555',
+                 font=('Segoe UI', 9, 'italic'), pady=0).pack()
 
         container = tk.Frame(win, bg='#1e1e1e')
         container.pack(fill=tk.BOTH, expand=True)
