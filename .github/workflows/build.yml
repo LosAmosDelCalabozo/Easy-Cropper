@@ -2,7 +2,8 @@ name: Build Executables
 
 on:
   push:
-    branches: [ main, master ]
+    tags:
+      - 'v*'        # triggers on version tags like v1.0, v1.2.3
   workflow_dispatch:  # allows manual trigger from Actions tab
 
 jobs:
@@ -47,7 +48,7 @@ jobs:
         with:
           name: Image-Cropper-macOS
           path: dist/Image.Cropper.macOS.zip
-          retention-days: 30
+          retention-days: 7
 
   build-windows:
     runs-on: windows-latest
@@ -85,7 +86,7 @@ jobs:
         with:
           name: Image-Cropper-Windows
           path: "dist/Image Cropper.exe"
-          retention-days: 30
+          retention-days: 7
 
   build-linux:
     runs-on: ubuntu-latest
@@ -124,4 +125,46 @@ jobs:
         with:
           name: Image-Cropper-Linux
           path: "dist/Image Cropper"
-          retention-days: 30
+          retention-days: 7
+
+  release:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Image Cropper ${{ github.ref_name }}
+          body: |
+            ## Image Cropper ${{ github.ref_name }}
+            *By Los Amos del Calabozo*
+
+            ### Downloads
+            | Platform | File |
+            |---|---|
+            | 🪟 Windows | `Image Cropper.exe` |
+            | 🍎 macOS | `Image.Cropper.macOS.zip` → unzip and run |
+            | 🐧 Linux | `Image Cropper` → `chmod +x` then run |
+
+            ### Requirements
+            None — each file is fully self-contained.
+
+            ### First run on macOS
+            Right-click the app → **Open** to bypass Gatekeeper on the first launch.
+          files: |
+            artifacts/Image-Cropper-Windows/Image Cropper.exe
+            artifacts/Image-Cropper-macOS/Image.Cropper.macOS.zip
+            artifacts/Image-Cropper-Linux/Image Cropper
+          draft: false
+          prerelease: false
