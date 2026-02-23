@@ -22,6 +22,21 @@ CONFIG_PATH = os.path.join(os.path.expanduser('~'), '.image_cropper.ini')
 HANDLE_SIZE = 8
 HIT_RADIUS  = 10
 
+RATIOS = [
+    ('Free',   None),
+    ('1:1',    (1, 1)),
+    ('4:3',    (4, 3)),
+    ('3:4',    (3, 4)),
+    ('16:9',   (16, 9)),
+    ('9:16',   (9, 16)),
+    ('3:2',    (3, 2)),
+    ('2:3',    (2, 3)),
+    ('5:4',    (5, 4)),
+    ('4:5',    (4, 5)),
+    ('2:1',    (2, 1)),
+    ('1:2',    (1, 2)),
+]
+
 DEFAULT_FOLDER_MODE   = 'subfolder'   # 'subfolder' | 'same' | 'custom'
 DEFAULT_SUBFOLDER     = 'cropped'
 DEFAULT_CUSTOM_FOLDER = ''
@@ -42,6 +57,7 @@ def load_config():
         'custom_folder': cfg.get('settings', 'custom_folder', fallback=DEFAULT_CUSTOM_FOLDER),
         'pattern':       cfg.get('settings', 'pattern',       fallback=DEFAULT_PATTERN),
         'overwrite':     cfg.get('settings', 'overwrite',     fallback='false'),
+        'ratio':         cfg.get('state',    'ratio',          fallback='Free'),
     }
 
 
@@ -55,6 +71,7 @@ def save_config(data):
         'pattern':       data.get('pattern',       DEFAULT_PATTERN),
         'overwrite':     data.get('overwrite',     'false'),
     }
+    cfg['state']['ratio'] = data.get('ratio', 'Free')
     with open(CONFIG_PATH, 'w') as f:
         cfg.write(f)
 
@@ -90,6 +107,7 @@ class ImageCropper:
         self._toast_after = None
 
         self.config = load_config()
+        self.ratio_var = None  # set in _build_ui
 
         self._build_ui()
         self._bind_keys()
@@ -188,6 +206,42 @@ class ImageCropper:
                              cursor='hand2', padx=10, pady=2)
         save_btn.pack(side=tk.RIGHT, padx=(0, 2), pady=3)
         self._make_tooltip(save_btn, 'Save crop  [Enter] or [Space]')
+
+        # Divider
+        tk.Frame(top_bar, bg='#333333', width=1).pack(side=tk.RIGHT, fill=tk.Y, pady=4, padx=4)
+
+        # Ratio selector
+        self.ratio_var = tk.StringVar(value=self.config.get('ratio', 'Free'))
+        ratio_names = [r[0] for r in RATIOS]
+        ratio_menu = tk.OptionMenu(top_bar, self.ratio_var, *ratio_names)
+        ratio_menu.config(bg='#2a2a2a', fg='#cccccc', activebackground='#00d4ff',
+                          activeforeground='#000000', relief='flat', bd=0,
+                          font=('Segoe UI', 9), cursor='hand2',
+                          highlightthickness=0, padx=4, pady=2)
+        ratio_menu['menu'].config(bg='#2a2a2a', fg='#cccccc',
+                                  activebackground='#00d4ff', activeforeground='#000000',
+                                  font=('Segoe UI', 9))
+        ratio_menu.pack(side=tk.RIGHT, padx=(0, 2), pady=3)
+
+        def _on_ratio_changed(*_):
+            # Save the choice immediately
+            self.config['ratio'] = self.ratio_var.get()
+            save_config(self.config)
+            # Reshape existing selection to match new ratio
+            if self._has_selection():
+                ratio = self._get_ratio()
+                if ratio:
+                    lx, ty, rx, by = self._norm_sel()
+                    # Keep top-left corner fixed, adjust bottom-right
+                    new_rx, new_by = self._constrain_to_ratio(lx, ty, rx, by, ratio)
+                    self.sel_x0, self.sel_y0 = lx, ty
+                    self.sel_x1, self.sel_y1 = new_rx, new_by
+                    self._draw_selection()
+
+        self.ratio_var.trace_add('write', _on_ratio_changed)
+
+        tk.Label(top_bar, text='Ratio:', bg='#1e1e1e', fg='#888888',
+                 font=('Segoe UI', 8)).pack(side=tk.RIGHT, padx=(0, 2))
 
         self.canvas = tk.Canvas(self.root, bg='#3c3c3c', cursor='crosshair', highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
@@ -646,13 +700,17 @@ class ImageCropper:
     def _render_image(self):
         if self.pil_image is None:
             return
-        cw = self.canvas.winfo_width() or 800
-        ch = self.canvas.winfo_height() or 600
+        cw = self.canvas.winfo_width()
+        ch = self.canvas.winfo_height()
+        # Canvas may report 1 or 0 before it's fully laid out — defer until ready
+        if cw < 10 or ch < 10:
+            self.root.after(50, self._render_image)
+            return
         img_w, img_h = self.pil_image.size
 
         self.scale = min(cw / img_w, ch / img_h)
-        new_w = int(img_w * self.scale)
-        new_h = int(img_h * self.scale)
+        new_w = max(1, int(img_w * self.scale))
+        new_h = max(1, int(img_h * self.scale))
         self.offset_x = (cw - new_w) // 2
         self.offset_y = (ch - new_h) // 2
 
@@ -758,6 +816,47 @@ class ImageCropper:
                                          fill='#00d4ff', outline='#ffffff',
                                          width=1, tags='selection')
 
+        # --- Info overlay inside selection ---
+        sel_w = rx - lx
+        sel_h = by - ty
+        if sel_w > 60 and sel_h > 30:
+            # Pixel dimensions in image space
+            ix0, iy0 = self._canvas_to_image(lx, ty)
+            ix1, iy1 = self._canvas_to_image(rx, by)
+            pw = max(1, int(abs(ix1 - ix0)))
+            ph = max(1, int(abs(iy1 - iy0)))
+
+            # Compute simplified aspect ratio
+            from math import gcd
+            g = gcd(pw, ph)
+            ar_w, ar_h = pw // g, ph // g
+            # If reduced numbers are large, find nearest common ratio
+            if ar_w > 20 or ar_h > 20:
+                ratio_f = pw / ph
+                candidates = [(1,1),(2,1),(1,2),(3,2),(2,3),(4,3),(3,4),
+                               (16,9),(9,16),(5,4),(4,5),(2,1),(1,2)]
+                best = min(candidates, key=lambda r: abs(r[0]/r[1] - ratio_f))
+                ar_w, ar_h = best
+                # Only add ~ if it's not an exact match
+                best_ratio = best[0] / best[1]
+                exact = abs(ratio_f - best_ratio) < 0.001
+                ratio_str = f"{ar_w}:{ar_h}" if exact else f"~{ar_w}:{ar_h}"
+            else:
+                ratio_str = f"{ar_w}:{ar_h}"
+
+            info_text = f"{pw} × {ph}  |  {ratio_str}"
+
+            # Position in top-left corner of selection with a small margin
+            ox = lx + 6
+            oy = ty + 6
+
+            self.canvas.create_text(ox + 1, oy + 1, text=info_text, anchor='nw',
+                                     font=('Segoe UI', 8, 'bold'),
+                                     fill='#000000', tags='selection')
+            self.canvas.create_text(ox, oy, text=info_text, anchor='nw',
+                                     font=('Segoe UI', 8, 'bold'),
+                                     fill='#ffffff', tags='selection')
+
     # ------------------------------------------------------------------
     #  Mouse events
     # ------------------------------------------------------------------
@@ -798,12 +897,39 @@ class ImageCropper:
         self.sel_x0, self.sel_y0 = x, y
         self.sel_x1, self.sel_y1 = x, y
 
+    def _get_ratio(self):
+        """Return (w, h) ratio tuple for current selection, or None if free."""
+        name = self.ratio_var.get() if self.ratio_var else 'Free'
+        for rname, rv in RATIOS:
+            if rname == name:
+                return rv
+        return None
+
+    def _constrain_to_ratio(self, x0, y0, x1, y1, ratio):
+        """Constrain (x1,y1) so the rectangle from (x0,y0) matches ratio,
+        using whichever axis is being dragged further."""
+        rw, rh = ratio
+        dx = x1 - x0
+        dy = y1 - y0
+        if dx == 0 and dy == 0:
+            return x1, y1
+        if abs(dx) * rh >= abs(dy) * rw:
+            new_dy = abs(dx) * rh / rw
+            y1 = y0 + (new_dy if dy >= 0 else -new_dy)
+        else:
+            new_dx = abs(dy) * rw / rh
+            x1 = x0 + (new_dx if dx >= 0 else -new_dx)
+        return x1, y1
+
     def _on_mouse_drag(self, event):
         if self._drag_mode is None:
             return
         x, y = event.x, event.y
+        ratio = self._get_ratio()
 
         if self._drag_mode == 'new':
+            if ratio:
+                x, y = self._constrain_to_ratio(self.sel_x0, self.sel_y0, x, y, ratio)
             self.sel_x1, self.sel_y1 = x, y
 
         elif self._drag_mode == 'move':
@@ -822,6 +948,30 @@ class ImageCropper:
             if 'e' in h: sx1 += dx
             if 'n' in h: sy0 += dy
             if 's' in h: sy1 += dy
+
+            if ratio:
+                # For corner handles: anchor is opposite corner, move the dragged corner
+                if len(h) == 2:  # corner handle
+                    anchor_x = sx1 if 'w' in h else sx0
+                    anchor_y = sy1 if 'n' in h else sy0
+                    move_x   = sx0 if 'w' in h else sx1
+                    move_y   = sy0 if 'n' in h else sy1
+                    mx, my = self._constrain_to_ratio(anchor_x, anchor_y, move_x, move_y, ratio)
+                    if 'w' in h: sx0 = mx
+                    else:        sx1 = mx
+                    if 'n' in h: sy0 = my
+                    else:        sy1 = my
+                elif h in ('n', 's'):
+                    # Height changed — adjust width from centre
+                    cx = (sx0 + sx1) / 2
+                    half_w = abs(sy1 - sy0) * ratio[0] / ratio[1] / 2
+                    sx0, sx1 = cx - half_w, cx + half_w
+                elif h in ('e', 'w'):
+                    # Width changed — adjust height from centre
+                    cy = (sy0 + sy1) / 2
+                    half_h = abs(sx1 - sx0) * ratio[1] / ratio[0] / 2
+                    sy0, sy1 = cy - half_h, cy + half_h
+
             self.sel_x0, self.sel_y0, self.sel_x1, self.sel_y1 = sx0, sy0, sx1, sy1
 
         self._draw_selection()
